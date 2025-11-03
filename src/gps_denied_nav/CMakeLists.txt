@@ -2,7 +2,6 @@ cmake_minimum_required(VERSION 3.8)
 project(gps_denied_nav)
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
 # set(OpenCV_DIR "/usr/local/lib/cmake/opencv4")
@@ -17,8 +16,11 @@ find_package(image_transport REQUIRED)
 find_package(ament_index_cpp REQUIRED)
 find_package(OpenCV REQUIRED)
 find_package(mavlink REQUIRED)
+find_package(mavros_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(std_srvs REQUIRED)
+
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 
 add_executable(save_video src/save_video.cpp)
 ament_target_dependencies(save_video rclcpp std_msgs sensor_msgs cv_bridge image_transport ament_index_cpp)
@@ -40,10 +42,7 @@ target_link_libraries(detect_features_sift ${OpenCV_LIBS})
 add_executable(drone_control 
   src/drone_control/drone_control_node.cpp
   src/drone_control/drone_mav_connection.cpp)
-ament_target_dependencies(drone_control rclcpp ament_index_cpp mavlink geometry_msgs std_msgs std_srvs)
-target_include_directories(drone_control PUBLIC
-  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-  $<INSTALL_INTERFACE:include/${PROJECT_NAME}>)
+ament_target_dependencies(drone_control rclcpp ament_index_cpp mavlink mavros_msgs geometry_msgs std_msgs std_srvs)
 
 install(TARGETS
   save_video

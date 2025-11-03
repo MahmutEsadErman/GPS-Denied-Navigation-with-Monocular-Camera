@@ -31,16 +31,32 @@ class RvizVisualizationsNode(Node):
             qos_profile
         )
 
+        self.vo_pose_sub = self.create_subscription(
+            PoseStamped,
+            '/vo_pose',
+            self.vo_pose_callback,
+            10
+        )
         # Publishers
-        self.path_pub = self.create_publisher(
+        self.gt_path_pub = self.create_publisher(
             Path,
             '/drone/gt_path'
             , 10
         )
-        
-        self.path_msg = Path()
-        self.path_msg.header.stamp = self.get_clock().now().to_msg()
-        self.path_msg.header.frame_id = "map"
+
+        self.vo_path_pub = self.create_publisher(
+            Path,
+            '/drone/vo_path'
+            , 10
+        )
+
+        self.gt_path_msg = Path()
+        self.gt_path_msg.header.stamp = self.get_clock().now().to_msg()
+        self.gt_path_msg.header.frame_id = "map"
+
+        self.vo_path_msg = Path()
+        self.vo_path_msg.header.stamp = self.get_clock().now().to_msg()
+        self.vo_path_msg.header.frame_id = "map"
 
         # Give publishers time to establish connections
         self.get_logger().info("Waiting for publishers to be ready...")
@@ -62,6 +78,9 @@ class RvizVisualizationsNode(Node):
         else:
             self.get_logger().warn("PoseArray does not contain enough poses.")
     
+    def vo_pose_callback(self, msg):
+        self.vo_pose = msg
+    
     def send_path(self):
         """Sends the path data to MAVROS."""
         # Wait until we have received the first pose
@@ -80,9 +99,12 @@ class RvizVisualizationsNode(Node):
         stamped_pose.pose.orientation = self.drone_pose.orientation
         stamped_pose.header.frame_id = "map"
         stamped_pose.header.stamp = self.get_clock().now().to_msg()
-        self.path_msg.poses.append(stamped_pose)
+        self.gt_path_msg.poses.append(stamped_pose)
 
-        self.path_pub.publish(self.path_msg)
+        self.gt_path_pub.publish(self.gt_path_msg)
+
+        self.vo_path_msg.poses.append(self.vo_pose)
+        self.vo_path_pub.publish(self.vo_path_msg)
 
 def main(args=None):
     """Main function to initialize and spin the node."""

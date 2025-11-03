@@ -6,8 +6,8 @@ Panels:
       Expanded:
         - /Global Options1
         - /Status1
-        - /TF1
         - /Path1
+        - /Path2
       Splitter Ratio: 0.5
     Tree Height: 342
   - Class: rviz_common/Selection
@@ -63,36 +63,6 @@ Visualization Manager:
         Reliability Policy: Reliable
         Value: /camera/image
       Value: true
-    - Class: rviz_default_plugins/TF
-      Enabled: true
-      Filter (blacklist): ""
-      Filter (whitelist): ""
-      Frame Timeout: 15
-      Frames:
-        All Enabled: true
-        base_link:
-          Value: true
-        base_link_frd:
-          Value: true
-        map:
-          Value: true
-        map_ned:
-          Value: true
-        odom:
-          Value: true
-        odom_ned:
-          Value: true
-      Marker Scale: 1
-      Name: TF
-      Show Arrows: true
-      Show Axes: true
-      Show Names: false
-      Tree:
-        map:
-          map_ned:
-            {}
-      Update Interval: 0
-      Value: true
     - Alpha: 1
       Buffer Length: 1000
       Class: rviz_default_plugins/Path
@@ -122,26 +92,33 @@ Visualization Manager:
         Value: /drone/gt_path
       Value: true
     - Alpha: 1
-      Arrow Length: 0.30000001192092896
-      Axes Length: 0.30000001192092896
-      Axes Radius: 0.009999999776482582
-      Class: rviz_default_plugins/PoseArray
-      Color: 255; 25; 0
-      Enabled: false
-      Head Length: 0.07000000029802322
-      Head Radius: 0.029999999329447746
-      Name: PoseArray
-      Shaft Length: 0.23000000417232513
-      Shaft Radius: 0.009999999776482582
-      Shape: Arrow (Flat)
+      Buffer Length: 1
+      Class: rviz_default_plugins/Path
+      Color: 170; 0; 0
+      Enabled: true
+      Head Diameter: 0.30000001192092896
+      Head Length: 0.20000000298023224
+      Length: 0.30000001192092896
+      Line Style: Lines
+      Line Width: 0.029999999329447746
+      Name: Path
+      Offset:
+        X: 0
+        Y: 0
+        Z: 0
+      Pose Color: 255; 85; 255
+      Pose Style: None
+      Radius: 0.029999999329447746
+      Shaft Diameter: 0.10000000149011612
+      Shaft Length: 0.10000000149011612
       Topic:
         Depth: 5
         Durability Policy: Volatile
         Filter size: 10
         History Policy: Keep Last
         Reliability Policy: Reliable
-        Value: /drone/gt_poses
-      Value: false
+        Value: /drone/vo_path
+      Value: true
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48
@@ -188,25 +165,25 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 10.960350036621094
+      Distance: 13.711469650268555
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
       Focal Point:
-        X: -0.26320570707321167
-        Y: 0.07412724941968918
-        Z: -0.2809126079082489
+        X: 0.871367335319519
+        Y: -0.2629246413707733
+        Z: 2.0871670246124268
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.5697970390319824
+      Pitch: 0.4247972071170807
       Target Frame: <Fixed Frame>
       Value: Orbit (rviz_default_plugins)
-      Yaw: 2.7354135513305664
+      Yaw: 3.1454131603240967
     Saved: ~
 Window Geometry:
   Displays:
@@ -226,5 +203,5 @@ Window Geometry:
   Views:
     collapsed: false
   Width: 1003
-  X: 873
-  Y: 5
+  X: 865
+  Y: 32

@@ -1,0 +1,8 @@
+<library path="rosbag2_panel">
+  <class type="rviz_playback_panel::PlaybackPanel"
+         base_class_type="rviz_common::Panel">
+    <description>
+      A custom panel for controlling rosbag2 playback inside RViz2.
+    </description>
+  </class>
+</library>

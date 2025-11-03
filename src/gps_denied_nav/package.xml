@@ -17,6 +17,7 @@
   <depend>ament_index_cpp</depend>
   <depend>geometry_msgs</depend>
   <depend>std_srvs</depend>
+  <depend>mavros_msgs</depend>
 
   <!-- Runtime dependencies for launch files -->
   <exec_depend>launch</exec_depend>

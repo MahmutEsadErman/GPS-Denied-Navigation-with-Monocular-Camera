@@ -15,6 +15,7 @@
 
 // Kendi MAVLink connection class'ınızı include edin
 #include "gps_denied_nav/drone_mav_connection.hpp"
+#include <mavros_msgs/msg/manual_control.hpp>
 
 class DroneControllerNode : public rclcpp::Node {
 public:
@@ -25,7 +26,7 @@ public:
     {
         // MAVLink bağlantısını başlat
         try {
-            mavlink_conn_ = std::make_unique<MAVLinkConnection>("127.0.0.1", 14550);
+            mavlink_conn_ = std::make_unique<MAVLinkConnection>("127.0.0.1", 14551);
             
             RCLCPP_INFO(this->get_logger(), "Waiting for heartbeat...");
             if (!mavlink_conn_->wait_heartbeat()) {
@@ -41,9 +42,9 @@ public:
         }
 
         // Subscribers
-        cmd_vel_sub_ = this->create_subscription<geometry_msgs::msg::Twist>(
-            "drone/cmd_vel", 10,
-            std::bind(&DroneControllerNode::cmdVelCallback, this, std::placeholders::_1));
+        cmd_move_sub_ = this->create_subscription<mavros_msgs::msg::ManualControl>(
+            "drone/cmd_move", 10,
+            std::bind(&DroneControllerNode::cmdMoveCallback, this, std::placeholders::_1));
 
         // Publishers
         status_pub_ = this->create_publisher<std_msgs::msg::String>("drone/status", 10);
@@ -64,21 +65,11 @@ public:
     }
 
 private:
-    void cmdVelCallback(const geometry_msgs::msg::Twist::SharedPtr msg) {
-        // ROS Twist mesajını MAVLink manual control değerlerine çevir
-        // Twist: linear.x (forward), linear.y (left), linear.z (up)
-        //        angular.x (roll), angular.y (pitch), angular.z (yaw)
-        
-        // MAVLink manual control range: -1000 to 1000
-        // Throttle range: 0 to 1000
-        
-        target_pitch_ = static_cast<int16_t>(msg->linear.x * 1000.0);  // forward/backward
-        target_roll_ = static_cast<int16_t>(msg->linear.y * 1000.0);   // left/right
-        target_yaw_ = static_cast<int16_t>(msg->angular.z * 1000.0);   // rotation
-        
-        // Throttle: linear.z değeri 0-1 arası olmalı, bunu 0-1000'e çeviriyoruz
-        double throttle_normalized = std::max(0.0, std::min(1.0, msg->linear.z));
-        target_throttle_ = static_cast<int16_t>(throttle_normalized * 1000.0);
+    void cmdMoveCallback(const mavros_msgs::msg::ManualControl::SharedPtr msg) {
+            target_pitch_ = msg->x;
+            target_roll_ = msg->y;
+            target_throttle_ = msg->z;
+            target_yaw_ = msg->r;
     }
 
     void armCallback(const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
@@ -86,9 +77,9 @@ private:
         (void)request;
         
         RCLCPP_INFO(this->get_logger(), "Arming drone...");
-        
-        // Önce STABILIZE moduna geç
-        mavlink_conn_->set_mode("STABILIZE");
+
+        // Önce ALT_HOLD moduna geç
+        mavlink_conn_->set_mode("ALT_HOLD");
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
         
         if (mavlink_conn_->arm_vehicle()) {
@@ -104,7 +95,7 @@ private:
     }
 
     void sendManualControl() {
-        if (mavlink_conn_ && is_armed_) {
+        if (mavlink_conn_) {
             // MAVLink manual control gönder
             // x: pitch, y: roll, z: throttle, r: yaw
             mavlink_conn_->send_manual_control(
@@ -132,6 +123,7 @@ private:
 
     // ROS2 interfaces
     rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr cmd_vel_sub_;
+    rclcpp::Subscription<mavros_msgs::msg::ManualControl>::SharedPtr cmd_move_sub_;
     rclcpp::Publisher<std_msgs::msg::String>::SharedPtr status_pub_;
     rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr arm_service_;
     rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr disarm_service_;
@@ -143,9 +135,9 @@ private:
     std::string current_mode_;
     int16_t target_pitch_ = 0;
     int16_t target_roll_ = 0;
-    int16_t target_throttle_ = 600;
+    int16_t target_throttle_ = 0;
     int16_t target_altitude_ = 0;
-    int16_t target_yaw_ = 300;
+    int16_t target_yaw_ = 0;
 };
 
 int main(int argc, char** argv) {

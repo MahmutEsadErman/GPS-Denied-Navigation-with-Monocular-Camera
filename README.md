@@ -31,3 +31,7 @@ ros2 launch uav_vslam uav_vslam.launch.py
 
 echo 'export GZ_SIM_SYSTEM_PLUGIN_PATH=$HOME/gz_ws/src/ardupilot_gazebo/build:${GZ_SIM_SYSTEM_PLUGIN_PATH}' >> ~/.bashrc
 echo 'export GZ_SIM_RESOURCE_PATH=/ros2_tutorials/new_models:${GZ_SIM_RESOURCE_PATH}' >> ~/.bashrc
+
+ros2 bag record -a -o simple_path
+
+ros2 bag record -o simple_path2 /camera/image /camera/camera_info /simulation_pose_info

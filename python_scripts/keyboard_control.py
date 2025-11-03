@@ -1,255 +1,234 @@
 #!/usr/bin/env python3
-"""
-Example of sending manual control commands to ArduPilot SITL using MAVROS with ROS2.
-This script uses ROS2 to send joystick/RC-style control inputs.
-
-Requirements:
-- ROS2 (Humble/Foxy)
-- MAVROS package for ROS2
-- ArduPilot SITL running
-"""
-
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
 
 from mavros_msgs.msg import ManualControl, State
 from mavros_msgs.srv import CommandBool, SetMode
-from std_msgs.msg import Header
+from geometry_msgs.msg import PoseStamped
+from std_msgs.msg import Int32
 
-import time
+# Keyboard mappings from the user request
+KEY_MAP = {
+    87: 'w',  # W - Pitch Forward
+    83: 's',  # S - Pitch Backward
+    65: 'a',  # A - Roll Left
+    68: 'd',  # D - Roll Right
+    73: 'i',  # I - Throttle Up
+    75: 'k',  # K - Throttle Down
+    74: 'j',  # J - Yaw Left
+    76: 'l',  # L - Yaw Right
+    81: 'q',  # Q - Quit/Disarm
+    69: 'e'   # E - Arm
+}
+
+# Neutral PWM values for RC channels
+RC_STEP = 300
 
 class ManualControlNode(Node):
     def __init__(self):
         super().__init__('manual_control_node')
-        
-        # QoS profile for subscribers
+
         qos_profile = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT,
-            durability=DurabilityPolicy.TRANSIENT_LOCAL,
+            durability=DurabilityPolicy.VOLATILE,
             history=HistoryPolicy.KEEP_LAST,
-            depth=1
+            depth=10
         )
         
         # Publishers
-        self.manual_control_pub = self.create_publisher(
+        self.manual_pub = self.create_publisher(
             ManualControl,
-            '/mavros/manual_control/send',
+            '/drone/cmd_move',
             10
         )
         
         # Subscribers
-        self.state_sub = self.create_subscription(
-            State,
-            '/mavros/state',
-            self.state_callback,
+        self.pos_sub = self.create_subscription(
+            PoseStamped,
+            '/mavros/local_position/pose',
+            self.pos_callback,
             qos_profile
         )
+
+        self.key_sub = self.create_subscription(Int32, '/keyboard/keypress', self.key_callback, 10)
         
         # Service clients
         self.arming_client = self.create_client(CommandBool, '/mavros/cmd/arming')
         self.set_mode_client = self.create_client(SetMode, '/mavros/set_mode')
         
-        # State variables
-        self.current_state = State()
-        self.connected = False
+        self.pos = PoseStamped()
+
+        # Control variables
+        self.roll = 0
+        self.pitch = 0
+        self.throttle = 0
+        self.altitude = 0
+        self.yaw = 0
+        self.is_armed = False
+        self.last_key_press_time = self.get_clock().now()
+        self.control_timeout = 0.1  # seconds
+
+        # Timer for publishing at 10Hz
+        self.timer_period = 0.1  # 10Hz
+        self.timer = self.create_timer(self.timer_period, self.timer_callback)
+
+        self.alt_timer = self.create_timer(self.timer_period, self.altitude_control)
         
-        # Wait for MAVROS connection
-        self.get_logger().info('Waiting for MAVROS connection...')
-        time.sleep(2)  # Give time for initial state message
+        self.get_logger().info("Manual Control Node initialized")
+    
+    def pos_callback(self, msg):
+        self.pos = msg
+
+    def timer_callback(self):
+        """
+        Timer callback function for publishing manual control commands.
+        """
+        # Check for timeout
+        elapsed = (self.get_clock().now() - self.last_key_press_time).nanoseconds / 1e9
+        if elapsed > self.control_timeout:
+            # Reset controls to neutral if timeout exceeded
+            self.roll = 0
+            self.pitch = 0
+            self.yaw = 0
+        self.send_manual_control(x=self.pitch, y=self.roll, z=self.throttle, r=self.yaw)
+
+    def key_callback(self, msg):
+        """
+        Callback function for the /keyboard/keypress topic.
+        """
+        key_code = msg.data
+        self.last_key_press_time = self.get_clock().now()
+
+        if key_code in KEY_MAP:
+            action = KEY_MAP[key_code]
+            print(self.altitude)
+
+            if action == 'w': self.pitch = RC_STEP
+            elif action == 's': self.pitch = -RC_STEP
+            elif action == 'a': self.roll = RC_STEP
+            elif action == 'd': self.roll = -RC_STEP
+            elif action == 'i': self.altitude += 1
+            elif action == 'k': self.altitude -= 1
+            elif action == 'j': self.yaw = RC_STEP
+            elif action == 'l': self.yaw = -RC_STEP
+            elif action == 'e': 
+                self.arm()
+                self.set_mode('STABILIZE')
+            elif action == 'q':
+                self.get_logger().info("Disarm command ('q') received. Shutting down.")
+                # The shutdown hook in main will handle disarming
+                self.destroy_node()
+                rclpy.shutdown()
+            elif action == 'e':
+                self.arm()
+    
+    def wait_for_connection(self, timeout_sec=10.0):
+        """Wait for FCU connection"""
+        self.get_logger().info("Waiting for FCU connection...")
         
-        # Check connection
-        timeout = 10
-        start = time.time()
-        while not self.connected and (time.time() - start) < timeout:
+        start_time = self.get_clock().now()
+        while rclpy.ok():
+            if self.current_state.connected:
+                self.get_logger().info("FCU connected!")
+                return True
+            
+            # Check timeout
+            elapsed = (self.get_clock().now() - start_time).nanoseconds / 1e9
+            if elapsed > timeout_sec:
+                self.get_logger().error("Connection timeout!")
+                return False
+            
             rclpy.spin_once(self, timeout_sec=0.1)
         
-        if self.connected:
-            self.get_logger().info('MAVROS connected!')
-        else:
-            self.get_logger().warn('Connection timeout - proceeding anyway')
-    
-    def state_callback(self, msg):
-        """Callback for state updates."""
-        self.current_state = msg
-        self.connected = msg.connected
-    
-    def arm_vehicle(self):
-        """Arm the vehicle."""
-        self.get_logger().info('Arming vehicle...')
-        
-        # Wait for service
-        while not self.arming_client.wait_for_service(timeout_sec=1.0):
-            self.get_logger().info('Arming service not available, waiting...')
-        
-        request = CommandBool.Request()
-        request.value = True
-        
-        future = self.arming_client.call_async(request)
-        rclpy.spin_until_future_complete(self, future, timeout_sec=5.0)
-        
-        if future.result() is not None:
-            response = future.result()
-            if response.success:
-                self.get_logger().info('Vehicle armed successfully')
-                return True
-            else:
-                self.get_logger().error('Failed to arm vehicle')
-                return False
-        else:
-            self.get_logger().error('Service call failed')
-            return False
-    
-    def disarm_vehicle(self):
-        """Disarm the vehicle."""
-        self.get_logger().info('Disarming vehicle...')
-        
-        request = CommandBool.Request()
-        request.value = False
-        
-        future = self.arming_client.call_async(request)
-        rclpy.spin_until_future_complete(self, future, timeout_sec=5.0)
-        
-        if future.result() is not None:
-            response = future.result()
-            if response.success:
-                self.get_logger().info('Vehicle disarmed successfully')
-                return True
-            else:
-                self.get_logger().error('Failed to disarm vehicle')
-                return False
-        else:
-            self.get_logger().error('Service call failed')
-            return False
+        return False
     
     def set_mode(self, mode):
-        """Set flight mode."""
-        self.get_logger().info(f'Setting mode to {mode}...')
-        
-        # Wait for service
-        while not self.set_mode_client.wait_for_service(timeout_sec=1.0):
-            self.get_logger().info('SetMode service not available, waiting...')
+        """Set flight mode"""
+        if not self.set_mode_client.wait_for_service(timeout_sec=1.0):
+            self.get_logger().error("Set mode service not available")
+            return False
         
         request = SetMode.Request()
         request.custom_mode = mode
         
         future = self.set_mode_client.call_async(request)
-        rclpy.spin_until_future_complete(self, future, timeout_sec=5.0)
+        rclpy.spin_until_future_complete(self, future, timeout_sec=1.0)
         
         if future.result() is not None:
-            response = future.result()
-            if response.mode_sent:
-                self.get_logger().info(f'Mode set to {mode}')
-                return True
-            else:
-                self.get_logger().error(f'Failed to set mode to {mode}')
-                return False
+            return future.result().mode_sent
         else:
-            self.get_logger().error('Service call failed')
+            self.get_logger().error("Set mode service call failed")
             return False
     
-    def send_manual_control(self, x, y, z, r, buttons=0):
-        """
-        Send manual control command.
+    def arm(self):
+        """Arm the vehicle"""
+        if not self.arming_client.wait_for_service(timeout_sec=1.0):
+            self.get_logger().error("Arming service not available")
+            return False
         
-        Args:
-            x: pitch (-1000 to 1000, forward/backward)
-            y: roll (-1000 to 1000, left/right)
-            z: throttle (0 to 1000)
-            r: yaw (-1000 to 1000, rotation)
-            buttons: button states (bitmask)
-        """
-        msg = ManualControl()
-        msg.header = Header()
-        msg.header.stamp = self.get_clock().now().to_msg()
+        request = CommandBool.Request()
+        request.value = True
         
-        msg.x = float(x)      # pitch
-        msg.y = float(y)      # roll
-        msg.z = float(z)      # throttle
-        msg.r = float(r)      # yaw
-        msg.buttons = buttons
+        future = self.arming_client.call_async(request)
+        rclpy.spin_until_future_complete(self, future, timeout_sec=1.0)
         
-        self.manual_control_pub.publish(msg)
+        if future.result() is not None:
+            self.is_armed = True
+            return future.result().success
+        else:
+            self.get_logger().error("Arming service call failed")
+            return False
     
-    def run_demo(self):
-        """Run the manual control demonstration."""
+    def send_manual_control(self, x=0, y=0, z=0, r=0, buttons=0):
+        """
+        Send manual control command
+        x: pitch (-1000 to 1000, forward is positive)
+        y: roll (-1000 to 1000, right is positive)
+        z: throttle (0 to 1000)
+        r: yaw (-1000 to 1000, right is positive)
+        buttons: button mask
+        """
+        manual_msg = ManualControl()
+        manual_msg.x = float(x)
+        manual_msg.y = float(y)
+        manual_msg.z = float(z)
+        manual_msg.r = float(r)
+        manual_msg.buttons = int(buttons)
         
-        # Set to STABILIZE mode
-        self.set_mode('STABILIZE')
-        time.sleep(1)
-        
-        # Arm the vehicle
-        if not self.arm_vehicle():
-            self.get_logger().error('Cannot proceed without arming')
-            return
-        
-        time.sleep(2)
-        
-        self.get_logger().info('\n=== Starting manual control demo ===')
-        
-        # Demo 1: Throttle up
-        self.get_logger().info('[1/4] Sending throttle up for 5 seconds...')
-        rate = self.create_rate(10)  # 10Hz
-        start_time = time.time()
-        while (time.time() - start_time) < 5:
-            # x=0 (no pitch), y=0 (no roll), z=600 (60% throttle), r=0 (no yaw)
-            self.send_manual_control(0, 0, 600, 0)
-            rclpy.spin_once(self, timeout_sec=0.01)
-            rate.sleep()
-        
-        # Demo 2: Neutral hover
-        self.get_logger().info('[2/4] Hovering with reduced throttle for 3 seconds...')
-        start_time = time.time()
-        while (time.time() - start_time) < 3:
-            # Neutral position with 40% throttle
-            self.send_manual_control(0, 0, 400, 0)
-            rclpy.spin_once(self, timeout_sec=0.01)
-            rate.sleep()
-        
-        # Demo 3: Forward pitch
-        self.get_logger().info('[3/4] Pitching forward for 3 seconds...')
-        start_time = time.time()
-        while (time.time() - start_time) < 3:
-            # x=300 (forward pitch), z=500 (50% throttle)
-            self.send_manual_control(300, 0, 500, 0)
-            rclpy.spin_once(self, timeout_sec=0.01)
-            rate.sleep()
-        
-        # Demo 4: Yaw rotation
-        self.get_logger().info('[4/4] Rotating (yaw) for 3 seconds...')
-        start_time = time.time()
-        while (time.time() - start_time) < 3:
-            # r=400 (yaw rotation), z=500 (50% throttle)
-            self.send_manual_control(0, 0, 500, 400)
-            rclpy.spin_once(self, timeout_sec=0.01)
-            rate.sleep()
-        
-        # Return to neutral
-        self.get_logger().info('Returning to neutral...')
-        for _ in range(20):
-            self.send_manual_control(0, 0, 400, 0)
-            rclpy.spin_once(self, timeout_sec=0.01)
-            rate.sleep()
-        
-        self.get_logger().info('\n=== Manual control demo complete ===')
-        self.get_logger().info('Disarming in 2 seconds...')
-        time.sleep(2)
-        self.disarm_vehicle()
+        self.manual_pub.publish(manual_msg)
+    
+    def altitude_control(self):
+        """
+        Adjust throttle based on desired altitude change.
+        altitude: desired altitude change (positive to increase, negative to decrease)
+        """
+        if self.pos.pose.position.z - 0.5 < self.altitude < self.pos.pose.position.z + 0.5:
+            pass
+        elif self.altitude < self.pos.pose.position.z:
+            self.throttle -= 100
+        elif self.altitude > self.pos.pose.position.z:
+            self.throttle += 100
+        print(self.pos.pose.position.z, self.altitude)
+        print(self.throttle)
+        # Clamp throttle to valid range
+        self.throttle = max(0, min(1000, self.throttle))
+
 
 def main(args=None):
     rclpy.init(args=args)
     
+    node = ManualControlNode()
+    
     try:
-        controller = ManualControlNode()
-        controller.run_demo()
+        rclpy.spin(node)
+        
     except KeyboardInterrupt:
-        print('\nScript interrupted by user')
-    except Exception as e:
-        print(f'Error: {e}')
-        import traceback
-        traceback.print_exc()
+        node.get_logger().info("Keyboard interrupt, shutting down...")
     finally:
+        node.destroy_node()
         rclpy.shutdown()
+
 
 if __name__ == '__main__':
     main()
