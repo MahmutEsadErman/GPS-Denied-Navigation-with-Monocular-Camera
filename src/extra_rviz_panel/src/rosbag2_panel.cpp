@@ -124,6 +124,11 @@ void PlaybackPanel::onChooseMomentClicked()
         auto camera_info_msg = deserializeMessage<sensor_msgs::msg::CameraInfo>(data.last_message);
         vo_calculator.set_K_from_CameraInfo(camera_info_msg);
       }
+      // else if (topic_name == "/mavros/imu/data") {
+      //   // Deserialize the last message into a IMU message
+      //   auto imu_msg1 = deserializeMessage<sensor_msgs::msg::Imu>(prev_msg[topic_name]);
+      //   vo_calculator.setCameraOrientation(imu_msg1->orientation);
+      // }
       else if (topic_name == "/camera/image") {
         // Deserialize the last message into an Image message
         auto image_msg1 = deserializeMessage<sensor_msgs::msg::Image>(data.last_message);
@@ -135,7 +140,7 @@ void PlaybackPanel::onChooseMomentClicked()
         auto pose_msg2 = deserializeMessage<geometry_msgs::msg::PoseArray>(data.last_message);
         auto pose_msg1 = deserializeMessage<geometry_msgs::msg::PoseArray>(prev_msg[topic_name]);
         vo_calculator.calculate_gt_T(pose_msg1->poses[2], pose_msg2->poses[2]);
-      }
+      } 
     }
     vo_calculator.visualize_matches();
     counter = 0;

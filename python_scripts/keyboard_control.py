@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import rclpy
+import time
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
 
@@ -63,17 +64,15 @@ class ManualControlNode(Node):
         self.roll = 0
         self.pitch = 0
         self.throttle = 0
-        self.altitude = 0
         self.yaw = 0
         self.is_armed = False
         self.last_key_press_time = self.get_clock().now()
-        self.control_timeout = 0.1  # seconds
+        self.control_timeout = 0.5  # seconds
 
         # Timer for publishing at 10Hz
         self.timer_period = 0.1  # 10Hz
         self.timer = self.create_timer(self.timer_period, self.timer_callback)
 
-        self.alt_timer = self.create_timer(self.timer_period, self.altitude_control)
         
         self.get_logger().info("Manual Control Node initialized")
     
@@ -91,6 +90,10 @@ class ManualControlNode(Node):
             self.roll = 0
             self.pitch = 0
             self.yaw = 0
+            if self.is_armed:
+                self.throttle = 500
+            else:
+                self.throttle = 0
         self.send_manual_control(x=self.pitch, y=self.roll, z=self.throttle, r=self.yaw)
 
     def key_callback(self, msg):
@@ -102,26 +105,22 @@ class ManualControlNode(Node):
 
         if key_code in KEY_MAP:
             action = KEY_MAP[key_code]
-            print(self.altitude)
 
             if action == 'w': self.pitch = RC_STEP
             elif action == 's': self.pitch = -RC_STEP
             elif action == 'a': self.roll = RC_STEP
             elif action == 'd': self.roll = -RC_STEP
-            elif action == 'i': self.altitude += 1
-            elif action == 'k': self.altitude -= 1
+            elif action == 'i': self.throttle = 1000
+            elif action == 'k': self.throttle = 0
             elif action == 'j': self.yaw = RC_STEP
             elif action == 'l': self.yaw = -RC_STEP
-            elif action == 'e': 
-                self.arm()
-                self.set_mode('STABILIZE')
+            elif action == 'e':
+                self.demo()
             elif action == 'q':
                 self.get_logger().info("Disarm command ('q') received. Shutting down.")
                 # The shutdown hook in main will handle disarming
                 self.destroy_node()
                 rclpy.shutdown()
-            elif action == 'e':
-                self.arm()
     
     def wait_for_connection(self, timeout_sec=10.0):
         """Wait for FCU connection"""
@@ -197,22 +196,34 @@ class ManualControlNode(Node):
         manual_msg.buttons = int(buttons)
         
         self.manual_pub.publish(manual_msg)
-    
-    def altitude_control(self):
+
+    def demo(self):
         """
-        Adjust throttle based on desired altitude change.
-        altitude: desired altitude change (positive to increase, negative to decrease)
+        Demo function to showcase manual control.
         """
-        if self.pos.pose.position.z - 0.5 < self.altitude < self.pos.pose.position.z + 0.5:
-            pass
-        elif self.altitude < self.pos.pose.position.z:
-            self.throttle -= 100
-        elif self.altitude > self.pos.pose.position.z:
-            self.throttle += 100
-        print(self.pos.pose.position.z, self.altitude)
-        print(self.throttle)
-        # Clamp throttle to valid range
-        self.throttle = max(0, min(1000, self.throttle))
+        self.get_logger().info("Starting demo...")
+        
+        # Arm the vehicle
+        if not self.arm():
+            self.get_logger().error("Failed to arm the vehicle")
+        
+        # Set mode to STABILIZE
+        if not self.set_mode('ALT_HOLD'):
+            self.get_logger().error("Failed to set mode to STABILIZE")
+
+        # Simple demo: takeoff
+        start = self.get_clock().now()
+        while (self.get_clock().now() - start).nanoseconds / 1e9 < 5.0:  # 5 seconds
+            self.throttle = 1000
+            self.send_manual_control(x=0, y=0, z=self.throttle, r=0)
+        self.get_logger().info("Taking off...")
+
+        while (self.get_clock().now() - start).nanoseconds / 1e9 < 30.0:  # hover for 30 seconds
+            self.throttle = 500
+            self.send_manual_control(x=0, y=0, z=self.throttle, r=0)
+
+        self.get_logger().info("Demo complete.")
+
 
 
 def main(args=None):

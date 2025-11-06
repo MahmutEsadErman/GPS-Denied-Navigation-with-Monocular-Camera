@@ -20,24 +20,52 @@ class VisualOdometry
 {
 private:
     cv::Mat K_;        // Camera intrinsics
+    cv::Mat cam_tf;        // Camera rotation
 
-    cv::Ptr<cv::ORB> orb_;
+    cv::Ptr<cv::Feature2D> fe_method;
     cv::Ptr<cv::FlannBasedMatcher> flann_;
 
     cv::Mat visual_T;
     cv::Mat gt_T;
     cv::Mat img_matches;
+    size_t match_size;
     
 public:
     bool K_received_;
 
-    VisualOdometry()
+    VisualOdometry(double camera_pitch_angle = 60.0)
     {
-        // Initialize ORB and FLANN
-        // Parameters: algorithm=6 (LSH), table_number=6, key_size=12, multi_probe_level=1
-        orb_ = cv::ORB::create(3000);
-        flann_ = cv::makePtr<cv::FlannBasedMatcher>(cv::makePtr<cv::flann::LshIndexParams>(6, 12, 1), cv::makePtr<cv::flann::SearchParams>(50));
+        // Initialize feature detector and FLANN matcher
+        // For SIFT (float descriptors): Use KDTree
+        fe_method = cv::SIFT::create(3000);
+        flann_ = cv::makePtr<cv::FlannBasedMatcher>(cv::makePtr<cv::flann::KDTreeIndexParams>(5), cv::makePtr<cv::flann::SearchParams>(50));
+        
+        // For ORB, use this instead:
+        // For ORB (binary descriptors): Use LSH with params (6, 12, 1)
+        // fe_method = cv::ORB::create(3000);
+        // flann_ = cv::makePtr<cv::FlannBasedMatcher>(cv::makePtr<cv::flann::LshIndexParams>(6, 12, 1), cv::makePtr<cv::flann::SearchParams>(50));
+        
         K_received_ = false;
+        
+        // Step 1: Define C_Cros_Ccv (OpenCV Cam to ROS-style Cam)
+        // OpenCV (Ccv): X-right, Y-down, Z-forward
+        // ROS-style (Cros): X-forward, Y-left, Z-up
+        cv::Mat C_Cros_Ccv = (cv::Mat_<double>(3, 3) <<
+             0,  0,  1,   // ROS X = CV Z
+            -1,  0,  0,   // ROS Y = -CV X
+             0, -1,  0);  // ROS Z = -CV Y
+
+        // Step 2: Define C_B_Cros (ROS-style Cam to Drone Body)
+        // This is the static camera pitch angle around the Y-axis.
+        double angle_rad = camera_pitch_angle * M_PI / 180.0;
+        cv::Mat C_B_Cros = (cv::Mat_<double>(3, 3) <<
+            cos(angle_rad), 0, sin(angle_rad),
+                         0, 1,              0,
+           -sin(angle_rad), 0, cos(angle_rad)
+        );
+        
+        // Step 3: Combine them to get C_B_Ccv (OpenCV Cam to Drone Body)
+        cam_tf = C_B_Cros * C_Cros_Ccv;
     }
 
     ~VisualOdometry()
@@ -98,8 +126,8 @@ public:
         // 1. Feature Detection and Description
         std::vector<cv::KeyPoint> kp1, kp2;
         cv::Mat des1, des2;
-        orb_->detectAndCompute(frame1, cv::Mat(), kp1, des1);
-        orb_->detectAndCompute(frame2, cv::Mat(), kp2, des2);
+        fe_method->detectAndCompute(frame1, cv::Mat(), kp1, des1);
+        fe_method->detectAndCompute(frame2, cv::Mat(), kp2, des2);
 
         if (des1.empty() || des2.empty())
         {
@@ -140,12 +168,21 @@ public:
         E = cv::findEssentialMat(q1, q2, K_, cv::RANSAC, 0.999, 1.0);
         cv::recoverPose(E, q1, q2, K_, R, t);
 
-        // 6. Integrate motion
+        // 6. Transform from OpenCV Camera Frame to Drone Body Frame
+
+        // Transform rotation: R_body = C * R_cam * C^T
+        cv::Mat R_ros = cam_tf * R * cam_tf.t(); // C.t() is C-transpose (which is C-inverse for rotation)
+
+        // Transform translation: t_body = C * t_cam
+        cv::Mat t_ros = cam_tf * t;
+
+        // 7. Integrate motion
         visual_T = cv::Mat::eye(4, 4, CV_64F);
-        R.copyTo(visual_T(cv::Rect(0, 0, 3, 3))); // Copy R to T's rotation part
-        t.copyTo(visual_T(cv::Rect(3, 0, 1, 3))); // Copy t to T's translation part
+        R_ros.copyTo(visual_T(cv::Rect(0, 0, 3, 3))); // Copy transformed R to T's rotation part
+        t_ros.copyTo(visual_T(cv::Rect(3, 0, 1, 3))); // Copy transformed t to T's translation part
 
         cv::drawMatches(frame1, kp1, frame2, kp2, good_matches, img_matches);
+        match_size = good_matches.size();
     }
 
     void calculate_gt_T(const geometry_msgs::msg::Pose pose_msg1,
@@ -215,6 +252,10 @@ public:
         cv::Mat t_visual = visual_T(cv::Rect(3, 0, 1, 3));
         cv::Mat t_gt = gt_T(cv::Rect(3, 0, 1, 3));
 
+        double gt_magnitude = cv::norm(t_gt);
+        double visual_magnitude = cv::norm(t_visual);
+        t_visual = t_visual * (gt_magnitude / visual_magnitude);
+
         // 1. Calculate rotation error (angle difference in degrees)
         cv::Mat R_error = R_gt.t() * R_visual; // R_gt^T * R_visual
         double trace = R_error.at<double>(0,0) + R_error.at<double>(1,1) + R_error.at<double>(2,2);
@@ -251,6 +292,7 @@ public:
         std::cout << "  Magnitude Error:  " << translation_magnitude_error 
                   << " (" << translation_magnitude_error_percent << "%)" << std::endl;
         std::cout << "  Euclidean Error:  " << translation_euclidean_error << std::endl;
+        std::cout << "  Number of Matches Used: " << match_size << std::endl;
         std::cout << "=============================================\n" << std::endl;
     }
 
