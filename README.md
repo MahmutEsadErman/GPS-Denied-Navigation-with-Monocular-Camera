@@ -34,7 +34,7 @@ echo 'export GZ_SIM_RESOURCE_PATH=/ros2_tutorials/new_models:${GZ_SIM_RESOURCE_P
 
 ros2 bag record -a -o simple_path2
 
-ros2 bag record -o field_scan /camera/image /camera/camera_info /simulation_pose_info /mavros/imu/data /mavros/global_position/rel_alt
+ros2 bag record -o simple_path /camera/image /camera/camera_info /simulation_pose_info /mavros/imu/data /mavros/global_position/rel_alt
 
 
 sim_vehicle.py -v ArduCopter -f gazebo-iris --model JSON --console --out=udp:127.0.0.1:14551

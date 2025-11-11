@@ -295,7 +295,7 @@ void PlaybackPanel::onTimerCallback()
   auto it = publishers_.find(msg->topic_name);
   if (it == publishers_.end()) {
     // This shouldn't happen if we pre-made all publishers
-    return; 
+    return;
   }
 
   // Store the last read message

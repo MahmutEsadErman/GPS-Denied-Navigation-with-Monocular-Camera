@@ -47,7 +47,7 @@ bool MAVLinkConnection::wait_heartbeat() {
         mavlink_status_t status;
 
         auto start = std::chrono::steady_clock::now();
-        while (std::chrono::steady_clock::now() - start < std::chrono::seconds(10)) {
+        while (true) {
             ssize_t len = recvfrom(sock, buf, sizeof(buf), 0, 
                                   (struct sockaddr*)&target_addr, &target_addr_len);
             if (len > 0) {
@@ -84,91 +84,6 @@ bool MAVLinkConnection::send_message(mavlink_message_t& msg) {
         ssize_t sent = sendto(sock, buf, len, 0, 
                              (struct sockaddr*)&target_addr, target_addr_len);
         return sent == len;
-}
-
-bool MAVLinkConnection::wait_command_ack(uint16_t command, int timeout_sec) {
-        uint8_t buf[2048];
-        mavlink_message_t msg;
-        mavlink_status_t status;
-
-        auto start = std::chrono::steady_clock::now();
-        while (std::chrono::steady_clock::now() - start < std::chrono::seconds(timeout_sec)) {
-            ssize_t len = recvfrom(sock, buf, sizeof(buf), 0, 
-                                  (struct sockaddr*)&target_addr, &target_addr_len);
-            if (len > 0) {
-                for (ssize_t i = 0; i < len; i++) {
-                    if (mavlink_parse_char(MAVLINK_COMM_0, buf[i], &msg, &status)) {
-                        if (msg.msgid == MAVLINK_MSG_ID_COMMAND_ACK) {
-                            mavlink_command_ack_t ack;
-                            mavlink_msg_command_ack_decode(&msg, &ack);
-                            if (ack.command == command) {
-                                return ack.result == MAV_RESULT_ACCEPTED;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        return false;
-}
-
-bool MAVLinkConnection::arm_vehicle() {
-        mavlink_message_t msg;
-        mavlink_command_long_t cmd = {};
-        
-        cmd.target_system = target_system;
-        cmd.target_component = target_component;
-        cmd.command = MAV_CMD_COMPONENT_ARM_DISARM;
-        cmd.confirmation = 0;
-        cmd.param1 = 1.0f; // 1 to arm
-        
-        mavlink_msg_command_long_encode(system_id, component_id, &msg, &cmd);
-        send_message(msg);
-        
-        if (wait_command_ack(MAV_CMD_COMPONENT_ARM_DISARM)) {
-            return true;
-        } else {
-            return false;
-        }
-}
-
-bool MAVLinkConnection::disarm_vehicle() {
-    mavlink_message_t msg;
-    mavlink_command_long_t cmd = {};
-    
-    cmd.target_system = target_system;
-    cmd.target_component = target_component;
-    cmd.command = MAV_CMD_COMPONENT_ARM_DISARM;
-    cmd.confirmation = 0;
-    cmd.param1 = 0.0f; // 0 to disarm
-    
-    mavlink_msg_command_long_encode(system_id, component_id, &msg, &cmd);
-    send_message(msg);
-    
-    if (wait_command_ack(MAV_CMD_COMPONENT_ARM_DISARM)) {
-        return true;
-    } else {
-        return false;
-    }
-}
-
-bool MAVLinkConnection::set_mode(const char* mode_name) {
-        
-        // For simplicity, using STABILIZE mode (mode 0 for copter)
-        // In a real implementation, you'd need a mode mapping
-        uint32_t custom_mode = 0; // STABILIZE for copter
-        
-        mavlink_message_t msg;
-        mavlink_set_mode_t mode_msg = {};
-        
-        mode_msg.target_system = target_system;
-        mode_msg.base_mode = MAV_MODE_FLAG_CUSTOM_MODE_ENABLED;
-        mode_msg.custom_mode = custom_mode;
-        
-        mavlink_msg_set_mode_encode(system_id, component_id, &msg, &mode_msg);
-        send_message(msg);
-        
-        return true;
 }
 
 void MAVLinkConnection::send_manual_control(int16_t x, int16_t y, int16_t z, int16_t r, uint16_t buttons) {

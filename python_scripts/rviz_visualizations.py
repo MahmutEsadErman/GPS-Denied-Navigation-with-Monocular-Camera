@@ -4,7 +4,7 @@ import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
 
-from geometry_msgs.msg import PoseStamped, PoseArray
+from geometry_msgs.msg import Pose, PoseArray, PoseStamped
 from nav_msgs.msg import Path
 
 class RvizVisualizationsNode(Node):
@@ -31,32 +31,32 @@ class RvizVisualizationsNode(Node):
             qos_profile
         )
 
-        self.vo_pose_sub = self.create_subscription(
-            PoseStamped,
-            '/vo_pose',
-            self.vo_pose_callback,
+        self.target_pose_sub = self.create_subscription(
+            Pose,
+            '/target_pose',
+            self.target_pose_callback,
             10
         )
         # Publishers
-        self.gt_path_pub = self.create_publisher(
+        self.real_path_pub = self.create_publisher(
             Path,
-            '/drone/gt_path'
+            '/drone/real_path'
             , 10
         )
 
-        self.vo_path_pub = self.create_publisher(
+        self.target_path_pub = self.create_publisher(
             Path,
-            '/drone/vo_path'
+            '/drone/target_path'
             , 10
         )
 
-        self.gt_path_msg = Path()
-        self.gt_path_msg.header.stamp = self.get_clock().now().to_msg()
-        self.gt_path_msg.header.frame_id = "map"
+        self.real_path_msg = Path()
+        self.real_path_msg.header.stamp = self.get_clock().now().to_msg()
+        self.real_path_msg.header.frame_id = "map"
 
-        self.vo_path_msg = Path()
-        self.vo_path_msg.header.stamp = self.get_clock().now().to_msg()
-        self.vo_path_msg.header.frame_id = "map"
+        self.target_path_msg = Path()
+        self.target_path_msg.header.stamp = self.get_clock().now().to_msg()
+        self.target_path_msg.header.frame_id = "map"
 
         # Give publishers time to establish connections
         self.get_logger().info("Waiting for publishers to be ready...")
@@ -64,6 +64,7 @@ class RvizVisualizationsNode(Node):
         # Initialize drone_pose
         self.drone_pose = None
         self.starting_point = None
+        self.target_pose = None
         
         # Timer to publish at 1Hz (required for attitude control)
         self.timer = self.create_timer(1, self.send_path)
@@ -77,34 +78,33 @@ class RvizVisualizationsNode(Node):
             self.drone_pose = msg.poses[2]
         else:
             self.get_logger().warn("PoseArray does not contain enough poses.")
-    
-    def vo_pose_callback(self, msg):
-        self.vo_pose = msg
-    
+
+    def target_pose_callback(self, msg):
+        stamped_pose = PoseStamped()
+        stamped_pose.header.frame_id = "map"
+        stamped_pose.header.stamp = self.get_clock().now().to_msg()
+        stamped_pose.pose = msg
+        self.target_pose = stamped_pose
+        self.target_path_msg.poses.append(self.target_pose)
+        self.target_path_pub.publish(self.target_path_msg)
+
     def send_path(self):
         """Sends the path data to MAVROS."""
+        # Only publish target path if we have received a target pose
+
         # Wait until we have received the first pose
         if self.drone_pose is None:
             return
         
-        # Set starting point on first valid pose
-        if self.starting_point is None:
-            self.starting_point = self.drone_pose
-            return
-        
         stamped_pose = PoseStamped()
-        stamped_pose.pose.position.x = self.drone_pose.position.x - self.starting_point.position.x
-        stamped_pose.pose.position.y = self.drone_pose.position.y - self.starting_point.position.y
-        stamped_pose.pose.position.z = self.drone_pose.position.z - self.starting_point.position.z
-        stamped_pose.pose.orientation = self.drone_pose.orientation
+        stamped_pose.pose = self.drone_pose
         stamped_pose.header.frame_id = "map"
         stamped_pose.header.stamp = self.get_clock().now().to_msg()
-        self.gt_path_msg.poses.append(stamped_pose)
+        self.real_path_msg.poses.append(stamped_pose)
 
-        self.gt_path_pub.publish(self.gt_path_msg)
+        self.real_path_pub.publish(self.real_path_msg)
 
-        self.vo_path_msg.poses.append(self.vo_pose)
-        self.vo_path_pub.publish(self.vo_path_msg)
+        
 
 def main(args=None):
     """Main function to initialize and spin the node."""

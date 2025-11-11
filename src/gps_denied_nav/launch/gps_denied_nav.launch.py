@@ -53,23 +53,6 @@ def generate_launch_description():
         }.items()
     )
 
-    # ardupilot_gazebo_folder = '/home/ubuntu/ardupilot_gazebo'
-    # uav_sdf_file = os.path.join(ardupilot_gazebo_folder, 'models', 'iris_with_gimbal', 'model.sdf')
-    # with open(uav_sdf_file, 'r') as infp:
-    #     robot_desc = infp.read()
-
-    # Robot state publisher node
-#     robot_state_publisher = Node(
-#     package='robot_state_publisher',
-#     executable='robot_state_publisher',
-#     name='robot_state_publisher',
-#     output='both',
-#     parameters=[
-#         {'use_sim_time': True},
-#         {'robot_description': robot_desc},
-#     ]
-# )
-
     # ROS-Gazebo bridge node
     ros_gz_bridge = Node(
         package='ros_gz_bridge',
@@ -119,6 +102,12 @@ def generate_launch_description():
         ]
     )
 
+    # RViz node
+    drone_control = Node(
+        package='gps_denied_nav',
+        executable='drone_control',
+    )
+
     # Set Gimbal to 60 degrees down
     set_gimbal_pitch = ExecuteProcess(
         cmd=[
@@ -130,22 +119,12 @@ def generate_launch_description():
         ],
         output='screen'
     )
-
-    # static_tf_example = Node(
-    #         package='tf2_ros',
-    #         executable='static_transform_publisher',
-    #         arguments=[
-    #             '--x', '0', '--y', '0', '--z', '1',
-    #             '--yaw', '0', '--pitch', '0', '--roll',
-    #             '0', '--frame-id', 'world', '--child-frame-id', 'mystaticturtle']
-    #     ),
     
     return LaunchDescription([
         pkg_name_arg,
         world_name_arg,
         gz_sim,
         mavros,
-        # robot_state_publisher,
         ros_gz_bridge,
         rviz,
         set_gimbal_pitch
