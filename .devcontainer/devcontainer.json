@@ -1,6 +1,7 @@
 {
   "name": "ros2_jazzy",
   "dockerFile": "Dockerfile",
+  "remoteUser": "ubuntu",
   "runArgs": [
     "--name=ros2_jazzy",
     "--network=host",

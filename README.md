@@ -23,7 +23,6 @@ ros2 run ros_gz_bridge parameter_bridge /world/iris_runway/model/iris_with_gimba
 
 ros2 launch mavros apm.launch fcu_url:=udp://:14550@
 
-
 ros2 service call /mavros/cmd/arming mavros_msgs/srv/CommandBool "{value: true}"
 
 ros2 launch uav_vslam uav_vslam.launch.py
@@ -38,3 +37,6 @@ ros2 bag record -o simple_path /camera/image /camera/camera_info /simulation_pos
 
 
 sim_vehicle.py -v ArduCopter -f gazebo-iris --model JSON --console --out=udp:127.0.0.1:14551
+
+ros2 run gps_denied_nav drone_control
+ros2 run gps_denied_nav main --ros2-args -p bag_file_path:=simple_path

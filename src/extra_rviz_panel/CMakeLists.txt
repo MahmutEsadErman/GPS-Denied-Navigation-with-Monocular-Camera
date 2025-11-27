@@ -6,7 +6,6 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
 endif()
 
 find_package(ament_cmake REQUIRED)
-find_package(ament_cmake_ros REQUIRED)
 find_package(pluginlib REQUIRED)
 find_package(rviz_common REQUIRED)
 find_package(rclcpp REQUIRED)
@@ -18,20 +17,27 @@ find_package(sensor_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(cv_bridge REQUIRED)
+find_package(Qt5 COMPONENTS Widgets REQUIRED)
+find_package(mavros_msgs REQUIRED)
 
 set(CMAKE_AUTOMOC ON)
 qt5_wrap_cpp(MOC_FILES
   include/extra_rviz_panel/rosbag2_panel.hpp
+  include/extra_rviz_panel/drone_panel.hpp
 )
 
-add_library(rosbag2_panel src/rosbag2_panel.cpp ${MOC_FILES})
+add_library(extra_rviz_panel_lib SHARED
+  src/rosbag2_panel.cpp 
+  src/drone_panel.cpp
+  ${MOC_FILES}
+)
 
-target_include_directories(rosbag2_panel PUBLIC
+target_include_directories(extra_rviz_panel_lib PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>
   ${OpenCV_INCLUDE_DIRS}
 )
-ament_target_dependencies(rosbag2_panel
+ament_target_dependencies(extra_rviz_panel_lib
   pluginlib
   rviz_common
   rclcpp
@@ -42,9 +48,10 @@ ament_target_dependencies(rosbag2_panel
   geometry_msgs
   tf2
   cv_bridge
+  mavros_msgs
 )
-target_link_libraries(rosbag2_panel ${OpenCV_LIBS})
-install(TARGETS rosbag2_panel
+target_link_libraries(extra_rviz_panel_lib ${OpenCV_LIBS} Qt5::Widgets)
+install(TARGETS extra_rviz_panel_lib
         EXPORT export_rviz_panel
         ARCHIVE DESTINATION lib
         LIBRARY DESTINATION lib

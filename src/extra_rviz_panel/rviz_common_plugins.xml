@@ -1,8 +1,15 @@
-<library path="rosbag2_panel">
+<library path="extra_rviz_panel_lib">
   <class type="rviz_playback_panel::PlaybackPanel"
          base_class_type="rviz_common::Panel">
     <description>
       A custom panel for controlling rosbag2 playback inside RViz2.
     </description>
   </class>
+  <class type="extra_rviz_panel::DronePanel"
+         base_class_type="rviz_common::Panel">
+    <description>
+      A panel for tuning drone PID parameters.
+    </description>
+  </class>
 </library>
+

@@ -89,7 +89,7 @@ class RvizVisualizationsNode(Node):
         self.target_path_pub.publish(self.target_path_msg)
 
     def send_path(self):
-        """Sends the path data to MAVROS."""
+        """Sends the path data."""
         # Only publish target path if we have received a target pose
 
         # Wait until we have received the first pose

@@ -29,7 +29,6 @@ private:
     cv::Mat gt_T;
     cv::Mat img_matches;
     size_t match_size;
-    OnSetParametersCallbackHandle::SharedPtr param_callback_handle_;
     
 public:
     bool K_received_;
@@ -37,13 +36,19 @@ public:
     VisualOdometry(double camera_pitch_angle = 60.0)
     {
         // Initialize feature detector and FLANN matcher
-        this->declare_parameter("feature_detector", "SIFT");
-        // Add parameter callback
-        param_callback_handle_ = this->add_on_set_parameters_callback(
-        std::bind(&VisualOdometry::parameter_callback, this, std::placeholders::_1));
-        std::string feature_detector;
-        this->get_parameter("feature_detector", feature_detector);
-
+        std::string feature_detector = "SIFT";  // Default feature detector
+        
+        // Initialize the feature detector based on the string
+        if (feature_detector == "SIFT") {
+            fe_method = cv::SIFT::create();
+        } else if (feature_detector == "ORB") {
+            fe_method = cv::ORB::create();
+        } else {
+            fe_method = cv::SIFT::create();  // Fallback to SIFT
+        }
+        
+        // Initialize FLANN matcher
+        flann_ = cv::FlannBasedMatcher::create();
               
         K_received_ = false;
         
@@ -72,36 +77,6 @@ public:
     {
         // Clean up OpenCV windows
         cv::destroyAllWindows();
-    }
-
-    rcl_interfaces::msg::SetParametersResult parameter_callback(
-    const std::vector<rclcpp::Parameter> & params)
-    {
-        rcl_interfaces::msg::SetParametersResult result;
-        result.successful = true;
-        
-        for (const auto & param : params) {
-        if (param.get_name() == "feature_detector") {
-            if (param.string().empty()) {
-            result.successful = false;
-            result.reason = "feature_detector must be non-empty";
-            return result;
-            }
-
-            // For SIFT (float descriptors): Use KDTree
-            if (feature_detector == "SIFT")
-            {
-                fe_method = cv::SIFT::create(3000);
-                flann_ = cv::makePtr<cv::FlannBasedMatcher>(cv::makePtr<cv::flann::KDTreeIndexParams>(5), cv::makePtr<cv::flann::SearchParams>(50));
-            }
-            else if (feature_detector == "ORB")
-            {
-                fe_method = cv::ORB::create(3000);
-                flann_ = cv::makePtr<cv::FlannBasedMatcher>(cv::makePtr<cv::flann::LshIndexParams>(6, 12, 1), cv::makePtr<cv::flann::SearchParams>(50));
-            }
-        }
-        
-        return result;
     }
 
     void visualize_matches()
